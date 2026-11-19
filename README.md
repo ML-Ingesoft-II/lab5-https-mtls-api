@@ -47,6 +47,47 @@ export KEYSTORE_PASSWORD=clave123
 
 ---
 
+## 2.bis. Mutual TLS – mTLS (Ejercicio 4c/4d)
+
+El `application.properties` activa autenticación mutua con `server.ssl.client-auth=need`, por lo que el servidor **exige** un certificado de cliente válido presente en `truststore.p12`. Genera primero el certificado del cliente y el truststore del servidor:
+
+```bash
+# Certificado del cliente (microservicio de pagos)
+keytool -genkeypair -alias pagos -keyalg RSA -keysize 2048 -validity 30 \
+  -storetype PKCS12 -keystore cliente-pagos.p12 -dname "CN=servicio-pagos" \
+  -storepass clave123
+
+# Exportar su parte publica
+keytool -exportcert -alias pagos -keystore cliente-pagos.p12 -rfc \
+  -file cliente-pagos.crt -storepass clave123
+
+# Importarla al truststore del servidor
+keytool -importcert -alias pagos -file cliente-pagos.crt -noprompt \
+  -storetype PKCS12 -keystore src/main/resources/truststore.p12 \
+  -storepass clave123
+```
+
+Arranca la API con las dos contraseñas definidas:
+
+```bash
+export KEYSTORE_PASSWORD=clave123
+export TRUSTSTORE_PASSWORD=clave123
+./mvnw spring-boot:run
+```
+
+Prueba sin y con certificado de cliente:
+
+```bash
+# Sin certificado de cliente -> falla en el handshake TLS
+curl --cacert seii.crt https://localhost:8443/api/v1/salud
+
+# Con certificado de cliente -> 200 y responde con el CN del cliente
+curl --cacert seii.crt --cert-type P12 --cert cliente-pagos.p12:clave123 \
+  https://localhost:8443/api/v1/salud
+# -> {"estado":"ok","cliente":"CN=servicio-pagos"}
+```
+---
+
 ## 3. Verificación Rápida
 
 ### Con `curl`
@@ -65,8 +106,3 @@ java -Djavax.net.ssl.trustStore=confianza.p12 \
      -cp target/classes com.unal.isw2.lab5.ClienteHttps
 
 ```
-
-```
-
-### Verificación final antes del `git push`:
-Ejecuta `git status` en tu terminal y confirma que **no** aparezcan `keystore.p12`, `confianza.p12` ni `seii.crt` en la lista[cite: 4]. Luego haz `git add .`, `git commit -m "feat: configurar API HTTPS con HSTS y cliente truststore (Ejercicio 3)"` y sube los cambios para que Óscar continúe con el Ejercicio 4[cite: 4].
